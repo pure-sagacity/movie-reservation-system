@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:13
+    container_name: movie_reservation_postgres
+    networks:
+      - postgres
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: movie_reservation_db
+    ports:
+      - 5432:5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+networks:
+  postgres:
+    external: true
+
+volumes:
+  postgres_data:

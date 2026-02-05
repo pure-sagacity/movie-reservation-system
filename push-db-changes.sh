@@ -1,0 +1,1 @@
+./node_modules/.bin/drizzle-kit generate && ./node_modules/.bin/drizzle-kit migrate
