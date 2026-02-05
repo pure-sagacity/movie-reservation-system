@@ -3,8 +3,13 @@ import { Elysia } from 'elysia'
 import { authMiddleware } from '@/middleware/auth';
 import { adminMiddleware } from '@/middleware/admin';
 import { db } from '@/lib/drizzle';
-import { movie as movieTable, screening as screeningTable, reservation as reservationTable } from '@/lib/schema';
-import { eq } from 'drizzle-orm';
+import {
+    movie as movieTable,
+    screening as screeningTable,
+    reservation as reservationTable,
+    user as userTable
+} from '@/lib/schema';
+import { and, eq } from 'drizzle-orm';
 import z from "zod";
 
 const user = new Elysia({ prefix: '/user' })
@@ -96,7 +101,12 @@ const screening = new Elysia({ prefix: '/screening' })
         // Fetch all screenings from the database
         const allScreenings = await db.select().from(screeningTable);
 
-        return { screenings: allScreenings };
+        return {
+            screenings: allScreenings.map(screening => ({
+                ...screening,
+                price: Number(screening.price),
+            }))
+        };
     }, {
         response: z.object({
             screenings: z.array(z.object({
@@ -122,7 +132,10 @@ const screening = new Elysia({ prefix: '/screening' })
         }
 
         // Return the screening
-        return screening;
+        return {
+            ...screening,
+            price: Number(screening.price),
+        };
     }, {
         params: z.object({
             id: z.string(),
@@ -224,8 +237,10 @@ const screening = new Elysia({ prefix: '/screening' })
 
         // Fetch the reservation for this user and screening
         const reservation = await db.select().from(reservationTable)
-            .where(eq(reservationTable.screeningId, screeningId))
-            .where(eq(reservationTable.userId, session.user.id))
+            .where(and(
+                eq(reservationTable.screeningId, screeningId),
+                eq(reservationTable.userId, session.user.id)
+            ))
             .then(res => res[0]);
 
         // If reservation not found, return 404
@@ -270,7 +285,201 @@ const screening = new Elysia({ prefix: '/screening' })
 
 const admin = new Elysia({ prefix: '/admin' })
     .use(authMiddleware)
-    .use(adminMiddleware);
+    .use(adminMiddleware)
+    // User Management
+    .get('/users', async () => {
+        const users = await db.select().from(userTable);
+        return { users };
+    }, {
+        response: z.object({
+            users: z.array(z.object({
+                id: z.string(),
+                name: z.string().nullable(),
+                email: z.string().email().nullable(),
+                role: z.string().nullable(),
+            }))
+        })
+    })
+    .put('/user/:id/promote', async ({ params, body, set }) => {
+        const userId = params.id;
+        const { role } = body;
+
+        await db.update(userTable)
+            .set({ role })
+            .where(eq(userTable.id, userId));
+
+        return { message: 'User promoted successfully' };
+    }, {
+        params: z.object({
+            id: z.string(),
+        }),
+        body: z.object({
+            role: z.string(),
+        }),
+        response: z.object({
+            message: z.string(),
+        })
+    })
+    .put('/user/:id/ban', async ({ params, body, set }) => {
+        const userId = params.id;
+        const { reason, expires } = body;
+
+        const updateData: Partial<User> = {
+            banned: true,
+            banReason: reason,
+            banExpires: expires ? new Date(expires) : undefined,
+        };
+
+        await db.update(userTable)
+            .set(updateData)
+            .where(eq(userTable.id, userId));
+
+        return { message: 'User banned successfully' };
+    }, {
+        params: z.object({
+            id: z.string(),
+        }),
+        body: z.object({
+            reason: z.string().optional(),
+            expires: z.string().optional(), // ISO date string
+        }),
+        response: z.object({
+            message: z.string(),
+        })
+    })
+    // Movie Management
+    .get('/movies', async () => {
+        const movies = await db.select().from(movieTable);
+        return { movies };
+    }, {
+        response: z.object({
+            movies: z.array(z.object({
+                id: z.string(),
+                title: z.string(),
+                duration: z.number(),
+                posterImage: z.string(),
+                genre: z.string(),
+                rating: z.number(),
+                description: z.string(),
+                releaseDate: z.date(),
+                maturityRating: z.string(),
+            }))
+        })
+    })
+    .post('/movie', async ({ body, set }) => {
+        const newMovie: Movie = {
+            id: crypto.randomUUID(),
+            title: body.title,
+            duration: body.duration,
+            posterImage: body.posterImage,
+            genre: body.genre as any,
+            rating: body.rating,
+            description: body.description,
+            releaseDate: new Date(body.releaseDate),
+            maturityRating: body.maturityRating as any,
+        };
+
+        await db.insert(movieTable).values(newMovie);
+        return { message: 'Movie added successfully', movieId: newMovie.id };
+
+    }, {
+        body: z.object({
+            title: z.string(),
+            duration: z.number(),
+            posterImage: z.string(),
+            genre: z.string(),
+            rating: z.number(),
+            description: z.string(),
+            releaseDate: z.string(), // ISO date string
+            maturityRating: z.string(),
+        }),
+        response: z.object({
+            message: z.string(),
+            movieId: z.string(),
+        })
+    })
+    .delete('/movie/:id', async ({ params, set }) => {
+        const movieId = params.id;
+
+        await db.delete(movieTable)
+            .where(eq(movieTable.id, movieId));
+
+        return { message: 'Movie deleted successfully' };
+    }, {
+        params: z.object({
+            id: z.string(),
+        }),
+        response: z.object({
+            message: z.string(),
+        })
+    })
+    // Screening Management
+    .get('/screenings', async () => {
+        const screenings = await db.select().from(screeningTable);
+        return {
+            screenings: screenings.map(screening => ({
+                ...screening,
+                price: Number(screening.price),
+            }))
+        };
+    }, {
+        response: z.object({
+            screenings: z.array(z.object({
+                id: z.string(),
+                movieId: z.string(),
+                auditoriumId: z.string(),
+                startTime: z.date(),
+                endTime: z.date(),
+                price: z.number(),
+                takenSeats: z.array(z.any()),
+            }))
+        })
+    })
+    .post('/screening', async ({ body, set }) => {
+        const newScreening: Screening = {
+            id: crypto.randomUUID(),
+            movieId: body.movieId,
+            auditoriumId: body.auditoriumId,
+            startTime: new Date(body.startTime),
+            endTime: new Date(body.endTime),
+            price: body.price,
+            takenSeats: [],
+        };
+
+        await db.insert(screeningTable).values({
+            ...newScreening,
+            price: body.price.toString(), // Convert to string for decimal field
+        });
+        return { message: 'Screening added successfully', screeningId: newScreening.id };
+
+    }, {
+        body: z.object({
+            movieId: z.string(),
+            auditoriumId: z.string(),
+            startTime: z.string(), // ISO date string
+            endTime: z.string(),   // ISO date string
+            price: z.number(),
+        }),
+        response: z.object({
+            message: z.string(),
+            screeningId: z.string(),
+        })
+    })
+    .delete('/screening/:id', async ({ params, set }) => {
+        const screeningId = params.id;
+
+        await db.delete(screeningTable)
+            .where(eq(screeningTable.id, screeningId));
+
+        return { message: 'Screening deleted successfully' };
+    }, {
+        params: z.object({
+            id: z.string(),
+        }),
+        response: z.object({
+            message: z.string(),
+        })
+    });
 
 const app = new Elysia({ prefix: '/api' })
     .get('/status', () => ({ status: 'ok' }))
@@ -278,6 +487,7 @@ const app = new Elysia({ prefix: '/api' })
 
 export const GET = app.fetch;
 export const POST = app.fetch;
+export const PUT = app.fetch;
 export const DELETE = app.fetch;
 
 export type app = typeof app;

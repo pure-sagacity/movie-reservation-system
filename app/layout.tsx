@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Source_Sans_3 } from "next/font/google";
-import "./globals.css";
 import { QueryProvider } from "@/components/QueryProvider";
+import { Toaster } from "@/components/ui/sonner"
+import "./globals.css";
 
 const sourceSans3 = Source_Sans_3({
   subsets: ["latin"],
@@ -26,6 +27,7 @@ export default function RootLayout({
       >
         <QueryProvider>
           {children}
+          <Toaster position="top-right" />
         </QueryProvider>
       </body>
     </html>

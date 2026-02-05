@@ -20,6 +20,7 @@ export interface Movie {
     id: string;
     title: string;
     genre: Genre;
+    rating: number;
     duration: number;
     posterImage: string;
     description: string;

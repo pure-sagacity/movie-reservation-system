@@ -8,10 +8,10 @@ export const movie = pgTable("movie", {
     duration: integer("duration").notNull(),
     posterImage: text("poster_image").notNull(),
     genre: text("genre").notNull().$type<Genre>(),
-    rating: text("rating").notNull().$type<Rating>(),
+    rating: integer("rating").notNull(),
     description: text("description").notNull(),
     releaseDate: timestamp("release_date").notNull(),
-    maturityRating: text("maturity_rating").notNull(),
+    maturityRating: text("maturity_rating").notNull().$type<Rating>(),
 });
 
 export const auditorium = pgTable("auditorium", {
